@@ -1,0 +1,65 @@
+name: build-sign-upload
+run-name: build NPM tarball, generate signed provenance, and persist both temporarily
+on: [workflow_dispatch]
+jobs:
+  # The build job persists the artifact(s) so that it remains available.
+  build:
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+    runs-on: ubuntu-latest
+    steps:
+          
+      - name: look around 0
+        run: echo pwd `pwd`; ls -la; ls -la ..
+
+      - name: check out artifact source code
+        uses: actions/checkout@v3
+        with: 
+          repository: wietse-gmail/top-package
+          #refs: v0.9.0
+          #path: top-package
+          
+      - name: look around 1
+        run: echo pwd `pwd`; ls -la; ls -la ..
+
+      - name: set up node js
+        uses: actions/setup-node@v3
+        #with:
+        #  node-version: '14'
+
+      - name: build artifact from source code
+        run: npm pack
+          
+      - name: look around 2
+        run: echo pwd `pwd`; ls -la; ls -la ..
+
+      - name: generate artifact hashes
+        shell: bash
+        id: hash
+        run: echo "hashes=$(sha256sum slsa-demo-top-package-0.9.0.tgz | base64 -w0)" >> "$GITHUB_OUTPUT"
+        
+      - name: upload the artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: slsa-demo-top-package-0.9.0.tgz
+          path: slsa-demo-top-package-0.9.0.tgz
+
+  # The provenance job does not need artifact(s), just their digest and name.
+  # It persists the attestation with the name given with provenance-name.
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v1.2.1
+    with:
+      base64-subjects: "${{ needs.build.outputs.hashes }}"
+      # Don't upload provenance to a new release
+      #upload-assets: true
+      # Following settings fail with generator v1.2.0
+      provenance-name: slsa-demo-top-package-0.9.0.tgz.intoto.jsonl
+      #private-repository: true
+      # Workaround see https://github.com/slsa-framework/slsa-github-generator/issues/942#issuecomment-1264020245
+      # This adds two minutes to the running time.
+      compile-generator: true
